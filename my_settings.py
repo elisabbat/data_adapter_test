@@ -1,6 +1,8 @@
 #settings file 
 #goal: import libraries successfully, create a path like settings.py in sedos data_adapter
 
+import shutil
+import urbs
 
 import logging
 import os
