@@ -7,15 +7,9 @@ from pathlib import Path
 import re
 import logging
 import dataclasses
-
-# Import data_adapter package components
-try:
-    from data_adapter import databus, collection, main
-    from data_adapter.preprocessing import Adapter
-    from data_adapter.structure import Structure
-except ImportError:
-    print("Error: data_adapter package not found. Make sure it's installed or in your PYTHONPATH.")
-    sys.exit(1)
+from data_adapter import databus, collection, main
+from data_adapter.preprocessing import Adapter
+from data_adapter.structure import Structure
 
 # Configure logging
 logging.basicConfig(
@@ -24,34 +18,6 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
-
-# Standard units mapping similar to what's in data_adapter_urbs.py
-standard_units = {
-    'None': None,
-    'year': 'a',
-    'cost': 'MEUR',
-    'energy': 'GWh',
-    'power': 'GW',
-    'efficiency': '%',
-    'transport_pass_demand': 'Gpkm',
-    'vehicles': 'kvehicles',
-    'emissions': 'Mt',
-    'pass_transport_ccf': 'Gpkm/kvehicles',
-    'energy_transport_ccf': 'GWh/kvehicles',
-    'power_per_vehicle': 'GW/kvehicles',
-    'milage': 'Tm/(kvehicles*a)',
-    'self_discharge': '%/h',
-    'cost_per_capacity': 'MEUR/GW',
-    'cost_per_energy': 'MEUR/GWh',
-    'cost_per_vehicle': 'MEUR/kvehicles',
-    'cost_per_pkm': 'MEUR/Gpkm',
-    'cost_var_per_vehicle': 'MEUR/(kvehicles*a)',
-    'specific_emission': 'Mt/GWh',
-    'specific_emission_co2': 'MtCO2/GWh',
-    'ccf_vehicles': 'GWh/100km',
-    'misc_ts': 'kW/kW',
-    'occupancy_rate': 'persons/vehicle',
-}
 
 @dataclasses.dataclass
 class Datapackage:
@@ -85,13 +51,13 @@ class UrbsDataConverter:
     
     def __init__(
         self, 
-        collections_directory="collections", 
-        output_file="urbs_input.xlsx", 
+        collections_directory="collections/SEDOS_industry_sector",
+        output_file="results",
         structure_name="SEDOS_Modellstruktur_steel_industry",
         process_sheet="Process_Set",
         helper_sheet="Helper_Set",
         scenario="default",
-        download_data=False
+
     ):
         """
         Initialize the converter with collections directory path and output file.
@@ -103,7 +69,6 @@ class UrbsDataConverter:
             process_sheet: Name of the process sheet
             helper_sheet: Name of the helper sheet
             scenario: Scenario name
-            download_data: Whether to download data from databus
         """
         self.collections_directory = Path(collections_directory)
         self.output_file = Path(output_file)
@@ -111,7 +76,6 @@ class UrbsDataConverter:
         self.process_sheet = process_sheet
         self.helper_sheet = helper_sheet
         self.scenario = scenario
-        self.download_data = download_data
         
         # Data containers
         self.datapackage = Datapackage()
@@ -123,14 +87,8 @@ class UrbsDataConverter:
     def _init_data_adapter(self):
         """Initialize the data_adapter components."""
         try:
-            if self.download_data:
-                # If a URL is provided, download the collection
-                collection_url = main.download_collection()
-                logger.info(f"Downloaded collection from {collection_url}")
-                self.collection_name = collection_url.split('/')[-1]
-            else:
-                # Otherwise use the local collections directory
-                self.collection_name = self.collections_directory.name
+
+            self.collection_name = "SEDOS_industry_sector"
             
             # Initialize structure
             self.structure = Structure(
@@ -151,41 +109,43 @@ class UrbsDataConverter:
         except Exception as e:
             logger.error(f"Error initializing data_adapter: {e}")
             raise
-    
+
     def find_csv_files(self):
         """
         Find all CSV files in the collections directory.
-        Uses data_adapter's functionality to locate files.
         """
         logger.info(f"Searching for data files in {self.collections_directory}")
-        
+
         # Check if collections directory exists
         if not self.collections_directory.exists():
             logger.error(f"Collections directory '{self.collections_directory}' does not exist.")
             return False
-            
+
         try:
-            # Use data_adapter to find files
-            collection_files = collection.find_files(self.collection_name)
-            
+            # Find files with .csv extension in the collections directory
+            collection_files = list(self.collections_directory.rglob("*.csv"))
+
             if not collection_files:
                 logger.warning(f"No files found in collection: {self.collection_name}")
                 return False
-                
+
             logger.info(f"Found {len(collection_files)} files in collection")
-            return True
-            
+            return collection_files  # Return the list of files
         except Exception as e:
-            logger.error(f"Error finding collection files: {e}")
+            logger.error(f"An error occurred while searching for files: {e}")
             return False
-    
+
     def read_collection_data(self):
         """
         Read data from the collection using data_adapter.
         """
+        self.processes = {
+            process: self.adapter.get_process(process)
+            for process in list(self.structure.processes.keys())
+        }
         try:
             # Use the adapter to read collection data
-            scalar_data = self.adapter.read_scalar_data()
+            scalar_data = self.adapter.get_process(self,process=scalar)
             if scalar_data is not None and not scalar_data.empty:
                 logger.info(f"Read scalar data with {len(scalar_data)} entries")
                 self.datapackage.parametrized_elements = self._group_scalar_data(scalar_data)
@@ -193,7 +153,7 @@ class UrbsDataConverter:
                 logger.warning("No scalar data found")
             
             # Read time series data
-            timeseries_data = self.adapter.read_timeseries_data()
+            timeseries_data = self.adapter.get_process(self, process=timeseries)
             if timeseries_data:
                 logger.info(f"Read {len(timeseries_data)} time series")
                 self.datapackage.parametrized_sequences = timeseries_data
@@ -665,4 +625,30 @@ def main():
     parser = argparse.ArgumentParser(
         description='Convert CSV files from collections directory to urbs Excel format using data_adapter'
     )
-    parser.add_argument
+    parser.add_argument('--collections_directory', default='collections', help='Directory containing input files')
+    parser.add_argument('--output_file', default='results', help='Directory to save adapted files')
+    parser.add_argument('--structure_name', default='SEDOS_Modellstruktur_steel_industry')
+    parser.add_argument('--process_sheet', default='Process_Set', help='Process sheet name (default: Process_Set)')
+    parser.add_argument('--helper_sheet', default='Helper_Set', help='Helper sheet name (default: Helper_Set)')
+    parser.add_argument('--scenario', default='default', help='Helper sheet name (default: Helper_Set)')
+
+    args = parser.parse_args()
+
+    # Create adapter
+    adapter = UrbsDataConverter(
+        collections_directory=args.collections_directory,
+        output_file=args.output_file,
+        structure_name=args.structure_name,
+        process_sheet=args.process_sheet,
+        helper_sheet=args.helper_sheet,
+        scenario=args.scenario,
+    )
+
+    # Process all files
+    adapter.run()
+
+    print(f"\nAll processing completed! Adapted files are in the '{args.output_file}' directory.")
+
+
+if __name__ == "__main__":
+    main()
