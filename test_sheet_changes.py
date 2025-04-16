@@ -37,7 +37,7 @@ class UrbsDataConverter:
     # Define urbs required sheet names and their structures
     URBS_SHEETS = {
         'global': ['param', 'value', 'unit', 'description'],
-        'site': ['site', 'lat', 'lon', 'area'],
+        'site': ['Name', 'area'],
         'commodity': ['site', 'commodity', 'type', 'price', 'max', 'maxperhour', 'co2'],
         'process': ['site', 'process', 'cap-min', 'cap-max', 'max-grad', 'min-load', 
                    'inv-cost', 'fix-cost', 'var-cost', 'wacc', 'depreciation', 'area-per-cap'],
@@ -304,9 +304,7 @@ class UrbsDataConverter:
     def _create_site_sheet(self):
         """Create the 'site' sheet for urbs."""
         site_data = {
-            'site': [],
-            'lat': [],
-            'lon': [],
+            'Name': [],
             'area': []
         }
 
@@ -314,21 +312,17 @@ class UrbsDataConverter:
         for data_type, df in self.datapackage.parametrized_elements.items():
             if 'site' in df.columns:
                 for site in df['site'].unique():
-                    if site and site not in site_data['site']:
-                        site_data['site'].append(site)
-                        site_data['lat'].append(None)  # Could be populated if latitude data is available
-                        site_data['lon'].append(None)  # Could be populated if longitude data is available
+                    if site and site not in site_data['Name']:
+                        site_data['Name'].append(site)
                         site_data['area'].append(None)  # Could be populated if area data is available
 
         # If no sites found, create a default site
-        if not site_data['site']:
-            site_data['site'].append('default')
-            site_data['lat'].append(0)
-            site_data['lon'].append(0)
+        if not site_data['Name']:
+            site_data['Name'].append('default')
             site_data['area'].append(None)
 
         self.urbs_dataframes['site'] = pd.DataFrame(site_data)
-        logger.info(f"Created site sheet with {len(site_data['site'])} sites")
+        logger.info(f"Created site sheet with {len(site_data['Name'])} sites")
 
     def _create_commodity_sheet(self):
         """Create the 'commodity' sheet for urbs."""
